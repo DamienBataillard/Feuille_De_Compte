@@ -84,7 +84,7 @@ Une application de gestion des dépenses avec une interface graphique en utilisa
 2. Exécutez l'application :
 
     ```bash
-    python gestion_depenses.py
+    python gestion_depense.py
     ```
 
 ## Créer un raccourci sur le bureau (Windows)
@@ -94,7 +94,7 @@ Une application de gestion des dépenses avec une interface graphique en utilisa
     ```batch
     @echo off
     cd /d "C:\chemin\vers\votre\projet"
-    python gestion_depenses.py
+    python gestion_depense.py
     pause
     ```
 
