@@ -20,3 +20,5 @@ ENV/
 # Ignore les dossiers système spécifiques à l'OS
 .DS_Store
 Thumbs.db
+
+.bat
