@@ -21,4 +21,5 @@ ENV/
 .DS_Store
 Thumbs.db
 
-.bat
+lancer_gestion_depenses.bat
+
