@@ -1,0 +1,22 @@
+# Ignore les fichiers d'environnement
+.env
+
+# Ignore les fichiers compilés de Python
+*.pyc
+__pycache__/
+
+# Ignore les dossiers de l'environnement virtuel
+venv/
+env/
+ENV/
+
+# Ignore les fichiers de configuration spécifiques à l'IDE
+.vscode/
+.idea/
+
+# Ignore les fichiers de logs
+*.log
+
+# Ignore les dossiers système spécifiques à l'OS
+.DS_Store
+Thumbs.db
