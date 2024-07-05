@@ -32,6 +32,13 @@ if conn:
     cursor.execute('''CREATE TABLE IF NOT EXISTS mois (
                         id_mois INT AUTO_INCREMENT,
                         mois_annee VARCHAR(7),
+                        budget_total DECIMAL(15, 2),
+                        depense_total DECIMAL(15, 2),
+                        budget_restant DECIMAL(15, 2),
+                        budget_deplacement DECIMAL(15, 2),
+                        budget_abonnement DECIMAL(15, 2),
+                        budget_loisirs DECIMAL(15, 2),
+                        budget_au_cas_ou DECIMAL(15, 2),
                         PRIMARY KEY(id_mois)
                       )''')
     cursor.execute('''CREATE TABLE IF NOT EXISTS categorie (
@@ -55,14 +62,23 @@ if conn:
 
 def get_or_create_current_month():
     mois_actuel = datetime.today().strftime("%Y-%m")
-    cursor.execute("SELECT id_mois FROM mois WHERE mois_annee = %s", (mois_actuel,))
+    cursor.execute("SELECT id_mois, mois_annee FROM mois ORDER BY mois_annee DESC LIMIT 1")
     result = cursor.fetchone()
-    if result:
-        return result[0]
+    if result and result[1] == mois_actuel:
+        id_mois = result[0]
+        cursor.execute("SELECT budget_total, depense_total, budget_restant, budget_deplacement, budget_abonnement, budget_loisirs, budget_au_cas_ou FROM mois WHERE id_mois = %s", (id_mois,))
+        data = cursor.fetchone()
+        return id_mois, data
     else:
-        cursor.execute("INSERT INTO mois (mois_annee) VALUES (%s)", (mois_actuel,))
+        budget_total = 300.00  # Total initial pour le mois
+        cursor.execute('''INSERT INTO mois 
+                        (mois_annee, budget_total, depense_total, budget_restant, 
+                         budget_deplacement, budget_abonnement, budget_loisirs, budget_au_cas_ou) 
+                        VALUES (%s, %s, 0, %s, %s, %s, %s, %s)''', 
+                       (mois_actuel, budget_total, budget_total, 50.00, 40.00, 150.00, 50.00))
         conn.commit()
-        return cursor.lastrowid
+        id_mois = cursor.lastrowid
+        return id_mois, (budget_total, 0, budget_total, 50.00, 40.00, 150.00, 50.00)
 
 def charger_categories():
     categories = {}
@@ -81,7 +97,7 @@ def ajouter_depense():
     categorie = categorie_var.get().lower()
     description = entree_description.get()
     date_depense = datetime.today().date()
-    id_mois = get_or_create_current_month()
+    id_mois, mois_data = get_or_create_current_month()
     
     # Charger les budgets des catégories depuis la base de données
     categories = charger_categories()
@@ -106,18 +122,39 @@ def ajouter_depense():
                    (montant, date_depense, description, id_categorie, id_mois))
     conn.commit()
     
+    # Mettre à jour les dépenses totales et le budget restant pour le mois
+    depense_total = mois_data[1] + montant
+    budget_restant = mois_data[0] - depense_total
+    
+    if categorie == 'deplacement':
+        cursor.execute("UPDATE mois SET depense_total = %s, budget_restant = %s, budget_deplacement = %s WHERE id_mois = %s", 
+                       (depense_total, budget_restant, mois_data[3] - total_categorie, id_mois))
+    elif categorie == 'abonnement':
+        cursor.execute("UPDATE mois SET depense_total = %s, budget_restant = %s, budget_abonnement = %s WHERE id_mois = %s", 
+                       (depense_total, budget_restant, mois_data[4] - total_categorie, id_mois))
+    elif categorie == 'loisirs':
+        cursor.execute("UPDATE mois SET depense_total = %s, budget_restant = %s, budget_loisirs = %s WHERE id_mois = %s", 
+                       (depense_total, budget_restant, mois_data[5] - total_categorie, id_mois))
+    elif categorie == 'au cas ou':
+        cursor.execute("UPDATE mois SET depense_total = %s, budget_restant = %s, budget_au_cas_ou = %s WHERE id_mois = %s", 
+                       (depense_total, budget_restant, mois_data[6] - total_categorie, id_mois))
+    
+    conn.commit()
+
     # Mise à jour de l'interface utilisateur
     liste_depenses.insert("", "end", values=(categorie, montant, date_depense, description))
     total_depenses_categories[categorie] = total_categorie
-    total_depenses.set(total_depenses.get() + montant)
+    total_depenses.set(depense_total)
     budget_restants[categorie].set(budget_categorie - total_categorie)
+    budget_total_var.set(mois_data[0])
+    budget_restant_var.set(budget_restant)
 
 def charger_depenses():
     # Charger les budgets des catégories depuis la base de données
     categories = charger_categories()
     
     # Chargement des dépenses depuis la base de données pour le mois en cours
-    id_mois = get_or_create_current_month()
+    id_mois, mois_data = get_or_create_current_month()
     cursor.execute("SELECT c.nom_cat, d.montant, d.date_depense, d.description FROM depense d JOIN categorie c ON d.id_categorie = c.id_categorie WHERE d.id_mois = %s", (id_mois,))
     
     for row in cursor.fetchall():
@@ -128,6 +165,9 @@ def charger_depenses():
     
     for categorie, (id_categorie, budget) in categories.items():
         budget_restants[categorie].set(budget - total_depenses_categories.get(categorie, 0))
+    
+    budget_total_var.set(mois_data[0])
+    budget_restant_var.set(mois_data[2])
 
 app = tk.Tk()
 app.title("Gestion des Dépenses")
@@ -163,6 +203,8 @@ liste_depenses.heading("Description", text="Description")
 liste_depenses.grid(column=0, row=4, columnspan=2, padx=10, pady=10)
 
 total_depenses = tk.DoubleVar(value=0)
+budget_total_var = tk.DoubleVar(value=300)
+budget_restant_var = tk.DoubleVar(value=300)
 total_depenses_categories = {}
 
 # Charger les budgets des catégories
@@ -173,7 +215,13 @@ budget_restants = {categorie: tk.DoubleVar(value=budget) for categorie, (id_cate
 ttk.Label(app, text="Total des Dépenses:").grid(column=0, row=5, padx=10, pady=10)
 ttk.Label(app, textvariable=total_depenses).grid(column=1, row=5, padx=10, pady=10)
 
-for i, (categorie, (id_categorie, budget)) in enumerate(categories.items(), start=6):
+ttk.Label(app, text="Budget Total:").grid(column=0, row=6, padx=10, pady=10)
+ttk.Label(app, textvariable=budget_total_var).grid(column=1, row=6, padx=10, pady=10)
+
+ttk.Label(app, text="Budget Restant:").grid(column=0, row=7, padx=10, pady=10)
+ttk.Label(app, textvariable=budget_restant_var).grid(column=1, row=7, padx=10, pady=10)
+
+for i, (categorie, (id_categorie, budget)) in enumerate(categories.items(), start=8):
     ttk.Label(app, text=f"Budget Restant {categorie.capitalize()}:").grid(column=0, row=i, padx=10, pady=5)
     ttk.Label(app, textvariable=budget_restants[categorie]).grid(column=1, row=i, padx=10, pady=5)
 
